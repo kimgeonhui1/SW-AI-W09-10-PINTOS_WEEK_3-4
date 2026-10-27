@@ -3,6 +3,8 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "threads/vaddr.h"
+#include "threads/mmu.h"
 
 static uint64_t page_hash (const struct hash_elem *p_, void *aux UNUSED);
 static bool page_less (const struct hash_elem *a_,const struct hash_elem *b_, void *aux UNUSED);
@@ -142,7 +144,7 @@ static struct frame *
 vm_evict_frame (void) {
 	struct frame *victim UNUSED = vm_get_victim ();
 	/* TODO: swap out the victim and return the evicted frame. */
-
+	
 	return NULL;
 }
 
@@ -154,6 +156,23 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
+	
+	/* frame구조체의 malloc으로 공간 할당 */
+	frame = malloc(sizeof(struct frame));
+	/* 공간 할당 실패 시 PANIC */
+	if(frame == NULL){
+		PANIC("todo");
+	}
+
+	/* palloc_get_page(PAL_USER) 호출하여 물리 메모리 userpool에 할당할 페이지 공간 생성 */
+	frame->kva = palloc_get_page(PAL_USER);
+	/* 페이지 공간 실패 시 PANIC */
+	if(frame->kva == NULL){
+		PANIC("todo");
+	}
+
+	/* frame 멤버 변수 초기화 */
+	frame->page = NULL;
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -195,6 +214,13 @@ bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: Fill this function */
+	/* 해당 va가 포함되어 있는 페이지를 찾아서 넘겨줘야 한다 */
+	/* spt_find 함수를 사용해서? 넘겨준다? */
+	page = spt_find_page(&thread_current()->spt, va);
+	
+	/* page가 없다면 어떤 예외처리를 해야 하는가? */
+	/* 지금 단게에서는 false */
+	if(page == NULL) return false;
 
 	return vm_do_claim_page (page);
 }
@@ -203,12 +229,20 @@ vm_claim_page (void *va UNUSED) {
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
-
+	/* 
+		할당된 frame이 없다면 현재 진행상황에서는 PANIC? 
+		교체 알고리즘(swap_in, out)?
+	*/
+	if(frame == NULL){
+		PANIC("todo");
+	}
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	/* pml4_set_page() 사용해서 va와 pa를 대응 관계를 설정 */
+	bool succ = pml4_set_page(thread_current()->pml4, frame->page->va, frame->kva, page->writable);
 
 	return swap_in (page, frame->kva);
 }

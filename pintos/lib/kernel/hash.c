@@ -24,15 +24,15 @@ static void rehash (struct hash *);
 bool
 hash_init (struct hash *h,
 		hash_hash_func *hash, hash_less_func *less, void *aux) {
-	h->elem_cnt = 0;
-	h->bucket_cnt = 4;
-	h->buckets = malloc (sizeof *h->buckets * h->bucket_cnt);
-	h->hash = hash;
-	h->less = less;
-	h->aux = aux;
+	h->elem_cnt = 0; 
+	h->bucket_cnt = 4; /* 버킷 크기를 4로 초기화 */
+	h->buckets = malloc (sizeof *h->buckets * h->bucket_cnt); /* 버킷을 malloc으로 할당 */
+	h->hash = hash; /* hasing 함수로 초기화 */
+	h->less = less; /* 비교 함수로 초기화 */
+	h->aux = aux; /* 조건 변수로 초기화 */
 
 	if (h->buckets != NULL) {
-		hash_clear (h, NULL);
+		hash_clear (h, NULL); /* malloc으로 할당받은 버킷 메모리 초기화 */
 		return true;
 	} else
 		return false;
@@ -279,6 +279,13 @@ hash_int (int i) {
 /* Returns the bucket in H that E belongs in. */
 static struct list *
 find_bucket (struct hash *h, struct hash_elem *e) {
+	/* 
+		e의 해시값을 계산 후 (버킷 개수 -1)와 비트 연산 후의 값을 버킷 인덱스에 반환 
+		ex)
+			h->hash (e, h->aux) = 13, h->bucket_cnt = 8
+			1101 & 0111 = 0101(2)
+			13 & (8-1) = 5
+	*/
 	size_t bucket_idx = h->hash (e, h->aux) & (h->bucket_cnt - 1);
 	return &h->buckets[bucket_idx];
 }
@@ -291,6 +298,7 @@ find_elem (struct hash *h, struct list *bucket, struct hash_elem *e) {
 
 	for (i = list_begin (bucket); i != list_end (bucket); i = list_next (i)) {
 		struct hash_elem *hi = list_elem_to_hash_elem (i);
+		/* hi가 e보다 작지 않고 e가 hi보다 작지 않다 = hi와 e가 같다 */
 		if (!h->less (hi, e, h->aux) && !h->less (e, hi, h->aux))
 			return hi;
 	}

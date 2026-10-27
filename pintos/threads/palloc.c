@@ -259,6 +259,11 @@ palloc_init (void) {
    then the pages are filled with zeros.  If too few pages are
    available, returns a null pointer, unless PAL_ASSERT is set in
    FLAGS, in which case the kernel panics. */
+// page_cnt개의 빈 페이지를 생성?가져옴? 이후 반환
+// PAL_USER가 설정되어 있으면 User Pool에서, 설정되어있지 않다면 Kernel Pool에서 page를 할당받음
+// 만약 FLAGES중 PAL_ZERO가 설정되어있으면 페이지가 0으로 채워짐.
+// 사용가능한 페이지가 없으면 NULL RETURN
+// FLAGES중 PAL_ASSERT가 설정된 경우, KERNEL PANIC 발생
 void *
 palloc_get_multiple (enum palloc_flags flags, size_t page_cnt) {
 	struct pool *pool = flags & PAL_USER ? &user_pool : &kernel_pool;
@@ -291,6 +296,11 @@ palloc_get_multiple (enum palloc_flags flags, size_t page_cnt) {
    then the page is filled with zeros.  If no pages are
    available, returns a null pointer, unless PAL_ASSERT is set in
    FLAGS, in which case the kernel panics. */
+// 하나의 페이지를 얻고 kva return
+// PAL_USER가 설정되어 있으면 User Pool에서, 설정되어있지 않다면 Kernel Pool에서 page를 할당받음
+// 만약 FLAGES중 PAL_ZERO가 설정되어있으면 페이지가 0으로 채워짐.
+// 사용가능한 페이지가 없으면 NULL RETURN
+// FLAGES중 PAL_ASSERT가 설정된 경우, KERNEL PANIC 발생
 void *
 palloc_get_page (enum palloc_flags flags) {
 	return palloc_get_multiple (flags, 1);

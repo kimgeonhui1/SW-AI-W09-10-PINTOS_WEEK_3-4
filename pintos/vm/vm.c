@@ -3,6 +3,7 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include <vaddr.h>
 
 static uint64_t page_hash (const struct hash_elem *p_, void *aux UNUSED);
 static bool page_less (const struct hash_elem *a_,const struct hash_elem *b_, void *aux UNUSED);
@@ -72,7 +73,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	if (spt_find_page (spt, upage) == NULL) {
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
-		 * TODO: should modify the field after calling the uninit_new. */
+		 * TODO: should modify the field after calling the uninit_new. */		
 	
 		/* TODO: Insert the page into the spt. */
 	}
@@ -153,7 +154,15 @@ vm_evict_frame (void) {
 static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
+	frame = malloc(sizeof(struct frame));
 	/* TODO: Fill this function. */
+	// user pool에서 할당받기
+	// 멤버 초기화하기 및 할당받은 page 0으로 초기화
+	frame->kva = palloc_get_page(PAL_USER);
+	
+	memset (frame->kva, 0, PGSIZE);
+
+	if(frame->kva == NULL) PANIC("todo");
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -192,9 +201,13 @@ vm_dealloc_page (struct page *page) {
 
 /* Claim the page that allocate on VA. */
 bool
-vm_claim_page (void *va UNUSED) {
+vm_claim_page (void *va) {
 	struct page *page = NULL;
+	struct thread *curr = thread_current ();
+
 	/* TODO: Fill this function */
+	page = spt_find_page(&curr->spt, va);
+	if(page == NULL) return false;
 
 	return vm_do_claim_page (page);
 }
@@ -203,12 +216,20 @@ vm_claim_page (void *va UNUSED) {
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
+	struct thread *curr = thread_current ();
 
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	// 현재 스레드의 pml4에서 va-> pa로 매핑하는것 필요
+	if(pml4_set_page(curr->pml4, page->va, frame->kva, page->writable) == false){
+		frame = NULL;
+		palloc_free_page(frame->kva);
+		free(frame);
+		return false;
+	}
 
 	return swap_in (page, frame->kva);
 }

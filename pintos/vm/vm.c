@@ -4,6 +4,9 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
+static uint64_t page_hash (const struct hash_elem *p_, void *aux UNUSED);
+static bool page_less (const struct hash_elem *a_,const struct hash_elem *b_, void *aux UNUSED);
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -37,6 +40,23 @@ static struct frame *vm_get_victim (void);
 static bool vm_do_claim_page (struct page *page);
 static struct frame *vm_evict_frame (void);
 
+/* 가상 주소값의 해시값을 반환해주는 helper 함수 */
+uint64_t
+page_hash (const struct hash_elem *p_, void *aux UNUSED){
+  const struct page *p = hash_entry (p_, struct page, hash_elem);
+  return hash_bytes (&p->va, sizeof p->va);
+}
+
+/* page a와 page b를 비교하여 a가 b보다 작다면 true / b가 a보다 작다면 false를 반환해주는 helper 함수 */
+bool
+page_less (const struct hash_elem *a_,
+           const struct hash_elem *b_, void *aux UNUSED){
+  const struct page *a = hash_entry (a_, struct page, hash_elem);
+  const struct page *b = hash_entry (b_, struct page, hash_elem);
+
+  return a->va < b->va;
+}
+
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
@@ -53,8 +73,16 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
-
+		
+		/* TODO: page포인터는 어디서 가져오나? */
+		/* uninit_new()함수를 이용해서 page를 생성해준다 */
+		/* 
+			page의 공간을 할당해준다 => malloc()으로 공간 할당?, 내장 함수는 없나?
+			
+		*/
+		uninit_new();
 		/* TODO: Insert the page into the spt. */
+		spt_insert_page(spt, upage);
 	}
 err:
 	return false;
@@ -63,8 +91,22 @@ err:
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
 spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = NULL;
+	/* 내용은 없는 빈 껍데기 구조체 page 생성 */
+	struct page page_s = {0};
+	struct page *page = &page_s;
 	/* TODO: Fill this function. */
+	/* page 구조체가 비어 있는데 저렇게 하는게 맞나? */
+	page->va = va; /* va 할당 */
+	struct hash_elem* h_e;
+	h_e = hash_find(&spt->spt_hash, &page->hash_elem); /* va를 담고 있는 hash_elem을 키값으로 find */
+	
+	/* spt에 존재한다면 page 변수에 spt에 있는 페이지 할당(hash_entry 사용) */
+	if(h_e != NULL){
+		page = hash_entry(h_e, struct page, hash_elem);
+	/* h_e가 NULL이라면 spt에 존재하지 않기 때문에 NULL 반환 */
+	}else{
+		page = NULL;
+	}
 
 	return page;
 }
@@ -75,6 +117,14 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
 	int succ = false;
 	/* TODO: Fill this function. */
+	/* 
+		hash_insert() 호출 성공 시 NULL 반환
+		hash_insert() 호출 실패 시 이미 존재하는 hash_elem 포인터 반환, insert X
+	*/
+	struct hash_elem* h_e = hash_insert(&spt->spt_hash, &page->hash_elem);
+	if(h_e == NULL){
+		succ = true;
+	}
 
 	return succ;
 }
@@ -174,6 +224,8 @@ vm_do_claim_page (struct page *page) {
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+	/* hash_init()함수를 호출하여 hash 초기화 */
+	hash_init(&spt->spt_hash, page_hash, page_less, NULL);
 }
 
 /* Copy supplemental page table from src to dst */

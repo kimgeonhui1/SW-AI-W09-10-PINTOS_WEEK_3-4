@@ -73,16 +73,8 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
-		
-		/* TODO: page포인터는 어디서 가져오나? */
-		/* uninit_new()함수를 이용해서 page를 생성해준다 */
-		/* 
-			page의 공간을 할당해준다 => malloc()으로 공간 할당?, 내장 함수는 없나?
-			
-		*/
-		uninit_new();
+	
 		/* TODO: Insert the page into the spt. */
-		spt_insert_page(spt, upage);
 	}
 err:
 	return false;
@@ -90,7 +82,7 @@ err:
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
+spt_find_page (struct supplemental_page_table *spt, void *va) {
 	/* 내용은 없는 빈 껍데기 구조체 page 생성 */
 	struct page page_s = {0};
 	struct page *page = &page_s;
@@ -113,8 +105,8 @@ spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
-		struct page *page UNUSED) {
+spt_insert_page (struct supplemental_page_table *spt,
+		struct page *page) {
 	int succ = false;
 	/* TODO: Fill this function. */
 	/* 
@@ -223,7 +215,7 @@ vm_do_claim_page (struct page *page) {
 
 /* Initialize new supplemental page table */
 void
-supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_init (struct supplemental_page_table *spt) {
 	/* hash_init()함수를 호출하여 hash 초기화 */
 	hash_init(&spt->spt_hash, page_hash, page_less, NULL);
 }

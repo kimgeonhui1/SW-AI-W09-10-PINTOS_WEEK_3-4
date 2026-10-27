@@ -15,6 +15,7 @@ struct uninit_page {
 	enum vm_type type;
 	void *aux;
 	/* Initiate the struct page and maps the pa to the va */
+	// struct page를 시작하고 pa를 va로 매핑
 	bool (*page_initializer) (struct page *, enum vm_type, void *kva);
 };
 

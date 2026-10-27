@@ -21,10 +21,12 @@ static void rehash (struct hash *);
 
 /* Initializes hash table H to compute hash values using HASH and
    compare hash elements using LESS, given auxiliary data AUX. */
+/* 보조 데이터 AUX가 주어졌을 때, HASH를 사용해 해시 값을 계산하고 
+LESS를 사용해 해시 요소들을 비교하기 위해 해시 테이블 H를 초기화합니다*/
 bool
 hash_init (struct hash *h,
 		hash_hash_func *hash, hash_less_func *less, void *aux) {
-	h->elem_cnt = 0;
+	h->elem_cnt = 0;	
 	h->bucket_cnt = 4;
 	h->buckets = malloc (sizeof *h->buckets * h->bucket_cnt);
 	h->hash = hash;
@@ -32,7 +34,7 @@ hash_init (struct hash *h,
 	h->aux = aux;
 
 	if (h->buckets != NULL) {
-		hash_clear (h, NULL);
+		hash_clear (h, NULL);	// 해시 테이블 초기화
 		return true;
 	} else
 		return false;
@@ -47,6 +49,7 @@ hash_init (struct hash *h,
    functions hash_clear(), hash_destroy(), hash_insert(),
    hash_replace(), or hash_delete(), yields undefined behavior,
    whether done in DESTRUCTOR or elsewhere. */
+// hash 테이블의 요소 제거
 void
 hash_clear (struct hash *h, hash_action_func *destructor) {
 	size_t i;
@@ -77,6 +80,7 @@ hash_clear (struct hash *h, hash_action_func *destructor) {
    hash_insert(), hash_replace(), or hash_delete(), yields
    undefined behavior, whether done in DESTRUCTOR or
    elsewhere. */
+// hash 테이블 제거
 void
 hash_destroy (struct hash *h, hash_action_func *destructor) {
 	if (destructor != NULL)
@@ -88,9 +92,12 @@ hash_destroy (struct hash *h, hash_action_func *destructor) {
    no equal element is already in the table.
    If an equal element is already in the table, returns it
    without inserting NEW. */
+// hash 테이블에 new를 삽입하고 테이블에 동일한 요소가 있으면 삽입하지 않고 반환. 동일한 요소가 없다면 null 포인터 반환
 struct hash_elem *
 hash_insert (struct hash *h, struct hash_elem *new) {
+	// new가 속한 해시 테이블h의 버킷 반환
 	struct list *bucket = find_bucket (h, new);
+	// H에서 E와 같은 해시 요소를 가진 항목을 검색합니다. 찾으면 반환하고, 그렇지 않으면 널 포인터를 반환합니다.
 	struct hash_elem *old = find_elem (h, bucket, new);
 
 	if (old == NULL)
@@ -103,8 +110,8 @@ hash_insert (struct hash *h, struct hash_elem *new) {
 
 /* Inserts NEW into hash table H, replacing any equal element
    already in the table, which is returned. */
-struct hash_elem *
-hash_replace (struct hash *h, struct hash_elem *new) {
+// hash테이블 new를 삽입, 이미 테이블에 존재하는 동일한 요소는 반환된 값으로 대체
+struct hash_elem *hash_replace (struct hash *h, struct hash_elem *new) {
 	struct list *bucket = find_bucket (h, new);
 	struct hash_elem *old = find_elem (h, bucket, new);
 
@@ -119,8 +126,7 @@ hash_replace (struct hash *h, struct hash_elem *new) {
 
 /* Finds and returns an element equal to E in hash table H, or a
    null pointer if no equal element exists in the table. */
-struct hash_elem *
-hash_find (struct hash *h, struct hash_elem *e) {
+struct hash_elem *hash_find (struct hash *h, struct hash_elem *e) {
 	return find_elem (h, find_bucket (h, e), e);
 }
 
@@ -131,8 +137,7 @@ hash_find (struct hash *h, struct hash_elem *e) {
    If the elements of the hash table are dynamically allocated,
    or own resources that are, then it is the caller's
    responsibility to deallocate them. */
-struct hash_elem *
-hash_delete (struct hash *h, struct hash_elem *e) {
+struct hash_elem *hash_delete (struct hash *h, struct hash_elem *e) {
 	struct hash_elem *found = find_elem (h, find_bucket (h, e), e);
 	if (found != NULL) {
 		remove_elem (h, found);
@@ -240,6 +245,7 @@ hash_empty (struct hash *h) {
 #define FNV_64_BASIS 0xcbf29ce484222325UL
 
 /* Returns a hash of the SIZE bytes in BUF. */
+// BUF의 size byte에 해당하는 해시 반환
 uint64_t
 hash_bytes (const void *buf_, size_t size) {
 	/* Fowler-Noll-Vo 32-bit hash, for bytes. */
@@ -277,6 +283,7 @@ hash_int (int i) {
 }
 
 /* Returns the bucket in H that E belongs in. */
+// hash_elem e가 속한 해시 테이블의 버킷 반환
 static struct list *
 find_bucket (struct hash *h, struct hash_elem *e) {
 	size_t bucket_idx = h->hash (e, h->aux) & (h->bucket_cnt - 1);
@@ -391,4 +398,3 @@ remove_elem (struct hash *h, struct hash_elem *e) {
 	h->elem_cnt--;
 	list_remove (&e->list_elem);
 }
-

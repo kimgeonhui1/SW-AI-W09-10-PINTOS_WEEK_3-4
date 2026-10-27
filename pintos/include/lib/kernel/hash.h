@@ -35,33 +35,33 @@ struct hash_elem {
  * name of the outer structure STRUCT and the member name MEMBER
  * of the hash element.  See the big comment at the top of the
  * file for an example. */
+/* HASH_ELEM을 HASH_ELEM이 포함된 구조체를 가리키는 포인터로 변환 */
 #define hash_entry(HASH_ELEM, STRUCT, MEMBER)                   \
 	((STRUCT *) ((uint8_t *) &(HASH_ELEM)->list_elem        \
 		- offsetof (STRUCT, MEMBER.list_elem)))
 
 /* Computes and returns the hash value for hash element E, given
  * auxiliary data AUX. */
+// 보조 데이터 AUX가 주어졌을 때, 해시 요소 E의 해시 값을 계산하여 반환
 typedef uint64_t hash_hash_func (const struct hash_elem *e, void *aux);
 
 /* Compares the value of two hash elements A and B, given
  * auxiliary data AUX.  Returns true if A is less than B, or
  * false if A is greater than or equal to B. */
-typedef bool hash_less_func (const struct hash_elem *a,
-		const struct hash_elem *b,
-		void *aux);
+typedef bool hash_less_func (const struct hash_elem *a, const struct hash_elem *b, void *aux);
 
 /* Performs some operation on hash element E, given auxiliary
  * data AUX. */
 typedef void hash_action_func (struct hash_elem *e, void *aux);
 
 /* Hash table. */
-struct hash {
-	size_t elem_cnt;            /* Number of elements in table. */
-	size_t bucket_cnt;          /* Number of buckets, a power of 2. */
-	struct list *buckets;       /* Array of `bucket_cnt' lists. */
-	hash_hash_func *hash;       /* Hash function. */
-	hash_less_func *less;       /* Comparison function. */
-	void *aux;                  /* Auxiliary data for `hash' and `less'. */
+struct hash{
+	size_t elem_cnt;	  /* 테이블에 있는 요소의 개수. */
+	size_t bucket_cnt;	  /* 버킷의 개수, 2의 거듭제곱. */
+	struct list *buckets; /* `bucket_cnt` 개의 리스트 배열. */
+	hash_hash_func *hash; /* 해시 함수. */
+	hash_less_func *less; /* 비교 함수. */
+	void *aux;			  /* `hash`와 `less`를 위한 보조 데이터. */
 };
 
 /* A hash table iterator. */

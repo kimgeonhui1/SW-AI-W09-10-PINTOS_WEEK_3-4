@@ -4,6 +4,9 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
+uint64_t hash_func (const struct hash_elem *e, void *aux);
+bool cmp_hash (const struct hash_elem *a, const struct hash_elem *b, void *aux);
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -53,8 +56,11 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
+		// page 생성후 uninit_new
+		
 
 		/* TODO: Insert the page into the spt. */
+		// page 넣기 
 	}
 err:
 	return false;
@@ -62,19 +68,43 @@ err:
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
+spt_find_page (struct supplemental_page_table *spt , void *va ) {
 	struct page *page = NULL;
 	/* TODO: Fill this function. */
+	bool find = hash_find(spt, va);
+	// 찾으면 반환, 못찾으면 null
+	// 못찾은 경우
+	if (find == NULL){
+		return page;
+	}
+	//찾은 경우
+	else{
+		// spt에서 이 페이지가 어디에 있는지
+		int64_t hash_index = hash_func (va, NULL); // 인덱스값이 나오면 그 버킷의 인덱스로 가기
+		page = &spt->spt_hash.buckets[hash_index];
+	}
 
 	return page;
 }
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
-		struct page *page UNUSED) {
+spt_insert_page (struct supplemental_page_table *spt , struct page *page ) {
 	int succ = false;
+	int64_t hash_index = hash_func (page->va, NULL);
+	if (spt->spt_hash.bucket_cnt >= hash_index){
+		
+	}
 	/* TODO: Fill this function. */
+	if(hash_insert(spt, page->va)  == NULL){
+		// 넣기
+		spt->spt_hash.buckets[hash_index] = page->va;
+		succ = true;
+	}else{
+		// 연결리스트로 넣기
+		모르겟음.
+		succ = true;		
+	}
 
 	return succ;
 }
@@ -174,6 +204,7 @@ vm_do_claim_page (struct page *page) {
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+	if(!hash_init(&spt->spt_hash, hash_func , cmp_hash , NULL)) return;
 }
 
 /* Copy supplemental page table from src to dst */
@@ -187,4 +218,23 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+}
+
+
+uint64_t hash_func (const struct hash_elem *e, void *aux)
+{
+	const struct page *page_e = hash_entry(e, struct page, hash_elem);
+
+	return hash_bytes(&page_e->va, sizeof(page_e->va));
+
+}
+
+
+bool cmp_hash (const struct hash_elem *a, const struct hash_elem *b, void *aux)
+{
+	const struct page *page_a  = hash_entry(a, struct page ,hash_elem);
+	const struct page *page_b  = hash_entry(b, struct page ,hash_elem);
+
+	if(page_a->va < page_b->va) return true;
+	else return false;
 }

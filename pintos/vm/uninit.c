@@ -43,6 +43,7 @@ uninit_new (struct page *page, void *va, vm_initializer *init,
 }
 
 /* Initalize the page on first fault */
+// 첫 번째 Fault에 대해 페이지를 초기화하시오
 static bool
 uninit_initialize (struct page *page, void *kva) {
 	struct uninit_page *uninit = &page->uninit;

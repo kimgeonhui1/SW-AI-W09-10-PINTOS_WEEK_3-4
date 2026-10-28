@@ -101,6 +101,14 @@ struct supplemental_page_table {
 	struct hash spt_hash; 
 };
 
+struct vm_entry {
+	int VM_BIN;
+	uint32_t zero_bytes;
+	uint32_t read_bytes;
+	off_t offset;
+	struct file *file;
+};
+
 #include "threads/thread.h"
 void supplemental_page_table_init (struct supplemental_page_table *spt);
 bool supplemental_page_table_copy (struct supplemental_page_table *dst,

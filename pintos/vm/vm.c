@@ -4,6 +4,9 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
+static uint64_t page_hash(const struct hash_elem *p_, void *aux UNUSED);
+static bool page_less(const struct hash_elem *a_,const struct hash_elem *b_, void *aux UNUSED);
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -66,6 +69,9 @@ spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: Fill this function. */
 
+	if(hash_find(&spt->spt_hash,&page->hash_elem) != &page->hash_elem){
+		return NULL;
+	}
 	return page;
 }
 
@@ -75,7 +81,9 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
 	int succ = false;
 	/* TODO: Fill this function. */
-
+		if(hash_insert(&spt->spt_hash,&page->hash_elem) == NULL)
+			succ =true;
+	
 	return succ;
 }
 
@@ -174,6 +182,7 @@ vm_do_claim_page (struct page *page) {
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+	hash_init(&spt->spt_hash,page_hash,page_less,NULL);
 }
 
 /* Copy supplemental page table from src to dst */

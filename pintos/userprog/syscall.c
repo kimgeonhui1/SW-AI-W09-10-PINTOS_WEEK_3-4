@@ -21,7 +21,7 @@ void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
 void check_addr(void * addr);
-void check_addr_page(void * buffer, size_t size);
+void check_addr_page(void * buffer, size_t size, bool);
 void check_addr_byte(char *string);
 
 void halt(void);
@@ -73,6 +73,7 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
+    thread_current()->saved_user_stack = f->rsp;
 	// TODO: Your implementation goes here.
 	switch(f->R.rax){
         // 인자 0개
@@ -154,7 +155,7 @@ syscall_handler (struct intr_frame *f) {
 
 void
 check_addr(void * addr){
-	struct thread *curr = thread_current();
+    struct thread *curr = thread_current();
 
 	// NULL 포인터인지
 	// 커널 공간을 가리키고 있는지
@@ -163,11 +164,11 @@ check_addr(void * addr){
     if (addr == NULL || !is_user_vaddr (addr))  exit (-1);    
 
     #ifdef VM
-        //pml4_get_page 대신 spt_find_page 
-        struct page *page = spt_find_page(&curr->spt, addr);
-        if (page == NULL) {
-            exit(-1);
-        }
+        // pml4_get_page 대신 spt_find_page 
+        // struct page *page = spt_find_page(&curr->spt, addr);
+        // if (page != NULL && page->writable == false) {
+        //     exit(-1);
+        // }
 
     #else
         if (pml4_get_page(curr->pml4, addr) == NULL) {
@@ -181,21 +182,36 @@ check_addr(void * addr){
 
 // 페이지 단위 검사하는(check_addr()함수 사용)함수 구현해야함
 // -> read, write에서 사용
+// read는 디스크(파일)에서 데이터를 가져와서 User Memory(buffer)에 Write 해야함 -> Writable == true여야함
+// write는 User Memory(buffer)에 있는 내용을 읽어서 파일이나 화면에 출력
 void
-check_addr_page(void * buffer, size_t size){
+check_addr_page(void * buffer, size_t size, bool write){
 	// 예외사항
 	if(buffer == NULL) exit(-1);
+    if(!is_user_vaddr(buffer)) exit(-1);
 	if(size ==0) return;
 
+    struct thread *curr = thread_current();
+    // struct page *writable_page = spt_find_page(&curr->spt, buffer);
+    // if (writable_page != NULL && writable_page->writable == false && write == true) exit(-1);
+    
 	const char *str_start = (const char *)buffer;
     const char *str_end = str_start + size - 1;	
+
+    char *start_page = pg_round_down(str_start);
+    char *end_page = pg_round_down(str_end);
 
 	// 시작주소 ~ 끝주소까지 페이지 단위로 검사
 	// pg_round_down(페이지에 들어가있는 주소?) -> 페이지의 시작점을 알려줌
 	// pg_round_up () -> 페이지의 끝을 알려줌
-	for(char *page = pg_round_down(str_start); page <= str_end; page += PGSIZE) check_addr(page);    
+	for(char *page = start_page; page <= end_page; page += PGSIZE) {
+        check_addr(page);
+        
+        struct page *writable_page = spt_find_page(&curr->spt, page);
+        if (writable_page != NULL && writable_page->writable == false && write == false) exit(-1);
+    }
 
-    check_addr(str_end);
+    // check_addr(str_end);
 
 	return;
 }
@@ -226,12 +242,13 @@ void halt(void){
 void exit(int status){
 	thread_current() ->status_exit = status;
 
+    if (lock_held_by_current_thread(&filesys_lock)) lock_release(&filesys_lock);
 	// 현재 실행중인 스레드를 강제 종료시킴
 	thread_exit();
 }
 
 int write(int fd, const void *buffer, unsigned size){
-	check_addr_page((void *)buffer, size);
+	check_addr_page((void *)buffer, size, true);
 
     struct thread *curr = thread_current();
 
@@ -357,7 +374,7 @@ int filesize (int fd) {
 }
 
 int read (int fd, void *buffer, unsigned size) { 
-	check_addr_page((void*)buffer, size);
+	check_addr_page((void*)buffer, size, false);
 	
     struct thread *curr = thread_current();
 

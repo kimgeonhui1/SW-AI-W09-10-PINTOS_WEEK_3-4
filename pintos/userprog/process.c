@@ -944,7 +944,7 @@ lazy_load_segment (struct page *page, void *aux) {
  * user process if WRITABLE is true, read-only otherwise.
  *
  * Return true if successful, false if a memory allocation error
- * or disk read error occurs. */
+ * or disk read error occurs. */   
 // File의 오프셋(OFS)부터 시작하여 read_bytes 바이트만큼 가져와서 0으로 초기화 시키고
 // writeable이 true일 경우, 쓰기 가능이여야 하고, false인 경우 읽기전용이여야 함
 // 메모리 할당 오류나 디스크 읽기 오류 발생 시 false 반환, 아니면 true 반환

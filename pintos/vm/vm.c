@@ -194,7 +194,25 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr) {
+	// fault가 난 주소(addr)가 더 이상 fault를 일으키지 않도록
+	// 하나 이상의 익명 페이지(Anonymous page)를 할당하여 스택 크기를 늘려줌
+	// 할당 주소는 반드시 PGSIZE 단위로 round_down 해야함 -> page_fault가 발생한 시점은 페이지 내부의 중간위치일 수도 있음.
+	// pg_round_down() -> 해당 주소가 속한 4KB 페이지의 시작 주소로 설정해줌
+	void *upage = pg_round_down(addr);
 
+	// fault가 난 주소(addr)가 유효한지 확인(addr < rsp - 8)
+	// if(addr < rsp-8) return;
+
+    // 스택의 크기는 최대 1MB 
+    // if ((uint64_t)upage < USER_STACK - (1 << 20))
+    //     return;
+
+    // spt에 가상 페이지 구조체(struct page) 생성 및 등록
+    if (vm_alloc_page (VM_ANON, upage, true)) {
+		// M.M에 적재 및 Page Table(pml4)에 매핑
+        vm_claim_page (upage);
+    }
+	return;
 }
 
 /* Handle the fault on write_protected page */
@@ -210,6 +228,7 @@ vm_try_handle_fault (struct intr_frame *f , void *addr ,
 		// user = user 모드로 접근했는지
 	struct supplemental_page_table *spt  = &thread_current ()->spt;
 	struct page *page = NULL;
+	struct thread *curr = thread_current();
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	
@@ -218,13 +237,30 @@ vm_try_handle_fault (struct intr_frame *f , void *addr ,
 	if(not_present == true){
 		page = spt_find_page (spt, addr);
 		if(page == NULL) {
+			if(user == true){
+				// if(pg_round_down(addr) >= USER_STACK - (1 << 20)) vm_stack_growth(addr);
+				// 스택 포인터보다 낮은 위치에 데이터를 쓰면 버그가 발생할 수 있음
+				// 스택의 최대 크기는 1MB
+				if(addr >= f->rsp - 8 && pg_round_down(addr) >= USER_STACK - (1 << 20) && addr < USER_STACK) {
+					vm_stack_growth(addr);	
+					return true;
+				}
+			}
+			if(user == false){
+				// if(page->writable == false && write == true) exit(-1);
+				// if(addr >= f->rsp - 8 && pg_round_down(addr) >= USER_STACK - (1 << 20)) vm_stack_growth(addr);
+				if(addr >= curr->saved_user_stack - 8 && pg_round_down(addr) >= USER_STACK - (1 << 20) && addr < USER_STACK){
+					vm_stack_growth(addr);
+					return true;
+				} 
+			}
 			return false;
 		}
-	
 		if(write && page->writable == false) exit(-1);
 
 		return vm_do_claim_page (page);
 	}
+
 	return false;
 }
 
@@ -307,6 +343,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst, struct supple
                 memcpy (child_aux, parent_page->uninit.aux, sizeof(struct vm_entry));
             }
 
+			// 가상 페이지 생성 및 spt에 등록
             if (!vm_alloc_page_with_initializer (parent_page->uninit.type, upage, writable, parent_page->uninit.init, child_aux)) {
                 if (child_aux != NULL) free(child_aux);
                 return false;
@@ -315,7 +352,9 @@ supplemental_page_table_copy (struct supplemental_page_table *dst, struct supple
 
     	// 이미 물리 메모리(프레임)에 데이터가 올라와 있는 경우 (VM_ANON, VM_FILE)
         else {
+			// 가상 페이지 생성(vm_alloc_page_with_initalizer 실행)(첫번째 페이지의 타입으로)
             if (!vm_alloc_page (parent_page->operations->type, upage, writable)) return false;
+			// 인자로 주는 주소에 대응하는 spt 페이지 찾고 물리 프레임을 할당받고 가상 주소와 물리 주소를 매핑
             if (!vm_claim_page (upage)) return false;
 
             struct page *child_page = spt_find_page (dst, upage);

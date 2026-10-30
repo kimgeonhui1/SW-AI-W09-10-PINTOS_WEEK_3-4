@@ -159,8 +159,24 @@ check_addr(void * addr){
 	// NULL 포인터인지
 	// 커널 공간을 가리키고 있는지
 	// 페이지 테이블(pml4)에 매핑되어 있는지
-	if (addr == NULL || !is_user_vaddr (addr) || pml4_get_page (curr->pml4, addr) == NULL)  exit (-1);
-	return;
+    // if (addr == NULL || !is_user_vaddr (addr) || pml4_get_page (curr->pml4, addr) == NULL)  exit (-1);    
+    if (addr == NULL || !is_user_vaddr (addr))  exit (-1);    
+
+    #ifdef VM
+        //pml4_get_page 대신 spt_find_page 
+        struct page *page = spt_find_page(&curr->spt, addr);
+        if (page == NULL) {
+            exit(-1);
+        }
+
+    #else
+        if (pml4_get_page(curr->pml4, addr) == NULL) {
+            exit(-1);
+        }
+        return NULL;
+    #endif
+
+    return;
 }
 
 // 페이지 단위 검사하는(check_addr()함수 사용)함수 구현해야함
@@ -177,7 +193,9 @@ check_addr_page(void * buffer, size_t size){
 	// 시작주소 ~ 끝주소까지 페이지 단위로 검사
 	// pg_round_down(페이지에 들어가있는 주소?) -> 페이지의 시작점을 알려줌
 	// pg_round_up () -> 페이지의 끝을 알려줌
-	for(char *page = pg_round_down(str_start); page <= str_end; page += PGSIZE) check_addr(page);
+	for(char *page = pg_round_down(str_start); page <= str_end; page += PGSIZE) check_addr(page);    
+
+    check_addr(str_end);
 
 	return;
 }
@@ -342,6 +360,8 @@ int read (int fd, void *buffer, unsigned size) {
 	check_addr_page((void*)buffer, size);
 	
     struct thread *curr = thread_current();
+
+    
 
     if (size == 0) return 0;
 

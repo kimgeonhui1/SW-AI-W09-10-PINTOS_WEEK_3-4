@@ -46,7 +46,7 @@ static struct frame *vm_evict_frame (void);
 uint64_t
 page_hash (const struct hash_elem *p_, void *aux UNUSED){
   const struct page *p = hash_entry (p_, struct page, hash_elem);
-  return hash_bytes (&p->va, sizeof p->va);
+  return hash_bytes (&p->va, sizeof (p->va));
 }
 
 /* page a와 page b를 비교하여 a가 b보다 작다면 true / b가 a보다 작다면 false를 반환해주는 helper 함수 */
@@ -104,7 +104,7 @@ spt_find_page (struct supplemental_page_table *spt, void *va) {
 	/* TODO: Fill this function. */
 	/* page 구조체가 비어 있는데 저렇게 하는게 맞나? */
 	// page->va = va; /* va 할당 */
-	
+
 	// pg_round_down(페이지에 들어가있는 주소?) -> 페이지의 시작점을 알려줌
 	page_s.va = pg_round_down(va);
 
@@ -171,7 +171,7 @@ vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
 
-	void *kva = palloc_get_page (PAL_USER);
+	void *kva = palloc_get_page (PAL_USER | PAL_ZERO);
 
     /* 2. 만약 할당 실패(메모리 부족) 시 페이지 교체(Eviction) 수행 */
     if (kva == NULL) {
@@ -193,7 +193,8 @@ vm_get_frame (void) {
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
+
 }
 
 /* Handle the fault on write_protected page */
@@ -216,9 +217,11 @@ vm_try_handle_fault (struct intr_frame *f , void *addr ,
 
 	if(not_present == true){
 		page = spt_find_page (spt, addr);
-		if(page == NULL) return false;
+		if(page == NULL) {
+			return false;
+		}
 	
-		if(write == true && page->writable == false) return false;
+		if(write && page->writable == false) exit(-1);
 
 		return vm_do_claim_page (page);
 	}
@@ -235,7 +238,7 @@ vm_dealloc_page (struct page *page) {
 
 /* Claim the page that allocate on VA. */
 bool
-vm_claim_page (void *va UNUSED) {
+vm_claim_page (void *va) {
 	struct page *page = NULL;
 	struct thread *curr = thread_current();
 
@@ -258,9 +261,9 @@ vm_do_claim_page (struct page *page) {
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	if(pml4_set_page(curr->pml4, page->va, frame->kva, page->writable) == false){
-		frame = NULL;
-		palloc_free_page(frame->kva);
-		free(frame);
+		// frame = NULL;
+		// palloc_free_page(frame->kva);
+		// free(frame);
 		return false;
 	}
 
@@ -272,18 +275,76 @@ vm_do_claim_page (struct page *page) {
 void
 supplemental_page_table_init (struct supplemental_page_table *spt) {
 	/* hash_init()함수를 호출하여 hash 초기화 */
-	hash_init(&spt->spt_hash, page_hash, page_less, NULL);
+	if(!hash_init(&spt->spt_hash, page_hash, page_less, NULL)) return;
 }
 
 /* Copy supplemental page table from src to dst */
+// 보조 테이블 페이지(spt)를 src에서 dst로 복사
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src) {
+	/* 해시 테이블을 순회하기 위함 */
+    struct hash_iterator i;
+    
+    // 맨 처음부터 복사해야 하기에 맨 처음 위치로 보내기
+    hash_first (&i, &src->spt_hash);
+
+    /* 해시 테이블의 다음 요소가 존재할 때까지(끝 까지) 루프를 돌며 모든 페이지를 복사 */
+    while (hash_next (&i)) {
+        // 데이터 가져오기
+        struct page *parent_page = hash_entry (hash_cur (&i), struct page, hash_elem);
+        
+        void *upage = parent_page->va;
+        bool writable = parent_page->writable;
+
+        // 물리 메모리에 적재되지 않은 경우 (VM_UNINIT)
+        if (parent_page->operations->type == VM_UNINIT) {
+            void *child_aux = NULL;
+
+			if(parent_page->uninit.aux != NULL) {
+                child_aux = malloc (sizeof(struct vm_entry)); 
+                if (child_aux == NULL) return false; 
+
+                memcpy (child_aux, parent_page->uninit.aux, sizeof(struct vm_entry));
+            }
+
+            if (!vm_alloc_page_with_initializer (parent_page->uninit.type, upage, writable, parent_page->uninit.init, child_aux)) {
+                if (child_aux != NULL) free(child_aux);
+                return false;
+            }
+        } 
+
+    	// 이미 물리 메모리(프레임)에 데이터가 올라와 있는 경우 (VM_ANON, VM_FILE)
+        else {
+            if (!vm_alloc_page (parent_page->operations->type, upage, writable)) return false;
+            if (!vm_claim_page (upage)) return false;
+
+            struct page *child_page = spt_find_page (dst, upage);
+            
+            memcpy (child_page->frame->kva, parent_page->frame->kva, PGSIZE);
+        }
+    }
+    return true;	
+}
+
+static void destroy_page(struct hash_elem *e, void *aux UNUSED){
+	struct page *page = hash_entry(e, struct page, hash_elem);
+	if (thread_current()->pml4 != NULL) {
+        pml4_clear_page(thread_current()->pml4, page->va);
+    }
+
+    vm_dealloc_page(page);
 }
 
 /* Free the resource hold by the supplemental page table */
 void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	// spt의 모든 자원 해제
+	// 프로세스 종료 시 userprog/process.c의 process_exit()에서 실행됨
+	// 테이블의 Page 항목들을 순회하며 각 페이지에 destroy(page) 호출
+	if (spt->spt_hash.buckets != NULL) {
+        hash_clear(&spt->spt_hash, destroy_page);
+    }
+
 }

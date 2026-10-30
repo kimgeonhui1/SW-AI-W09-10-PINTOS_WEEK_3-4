@@ -102,7 +102,7 @@ struct supplemental_page_table {
 };
 
 struct vm_entry {
-	int VM_BIN;
+	// int VM_BIN;
 	uint32_t zero_bytes;
 	uint32_t read_bytes;
 	off_t offset;

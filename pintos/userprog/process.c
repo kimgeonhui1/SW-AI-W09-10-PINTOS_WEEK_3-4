@@ -585,7 +585,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool filesys_locked = false;
 	int i;
 
-	char *argv[128];
+	char *argv[100];
 	int argc = 0;
 	char *token, *save_ptr;
 
@@ -913,21 +913,18 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: VA is available when calling this function. */
 	struct vm_entry *vme = (struct vm_entry *)aux;
 
-	// 데이터가 채워질 주소 가져오기
-    uint8_t *kva = page->frame->kva;
 
     // 파일 오프셋부터 read_bytes만큼 물리 메모리에 읽어옴
 	// 정확히 읽어오지 않으면(읽어온 byte수와 read_bytes가 일치하지 않으면) return false
-    if (file_read_at (vme->file, kva, vme->read_bytes, vme->offset) 
-            != (int32_t)vme->read_bytes) {
+    if (file_read_at (vme->file, page->frame->kva, vme->read_bytes, vme->offset) != (int)vme->read_bytes) {
         free (vme);
         return false;
     }
 
     // 페이지의 남은 공간(zero_bytes)을 0으로 초기화 
-    memset (kva + vme->read_bytes, 0, vme->zero_bytes);
+    memset (page->frame->kva + vme->read_bytes, 0, vme->zero_bytes);
 
-    free (vme); 
+    free(vme); 
 
     return true;
 }
@@ -973,7 +970,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		aux->offset = ofs;
 		aux->read_bytes = page_read_bytes;
 		aux->zero_bytes = page_zero_bytes;
-		aux->VM_BIN = 0;
 
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage, writable, lazy_load_segment, aux)){
 			free(aux);

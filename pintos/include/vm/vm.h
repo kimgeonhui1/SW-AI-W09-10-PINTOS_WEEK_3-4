@@ -101,6 +101,17 @@ struct supplemental_page_table {
 	struct hash spt_hash; 
 };
 
+/* page에 들어갈 보조 정보 */
+struct vm_entry {
+	struct file *file;
+	off_t ofs;
+	uint32_t read_bytes;
+	uint32_t zero_bytes;
+	bool writable;
+	void *va;
+};
+
+
 #include "threads/thread.h"
 void supplemental_page_table_init (struct supplemental_page_table *spt);
 bool supplemental_page_table_copy (struct supplemental_page_table *dst,

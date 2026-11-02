@@ -158,8 +158,11 @@ check_addr(void * addr){
 
 	// NULL 포인터인지
 	// 커널 공간을 가리키고 있는지
-	// 페이지 테이블(pml4)에 매핑되어 있는지
-	if (addr == NULL || !is_user_vaddr (addr) || pml4_get_page (curr->pml4, addr) == NULL)  exit (-1);
+	// Project2까지는 이 부분을 exit(-1) 처리했는데 Project3부터는 정상적인 접근으로 처리
+	if (addr == NULL 
+        || !is_user_vaddr (addr) 
+        // || pml4_get_page (curr->pml4, addr) == NULL
+    )  exit (-1);
 	return;
 }
 

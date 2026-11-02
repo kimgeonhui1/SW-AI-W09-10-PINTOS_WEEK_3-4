@@ -69,6 +69,12 @@ file_get_inode (struct file *file) {
  * Returns the number of bytes actually read,
  * which may be less than SIZE if end of file is reached.
  * Advances FILE's position by the number of bytes read. */
+/* 
+	FILE의 현재 위치부터 시작하여, size만큼 읽어 buffer에 저장 
+	- 실제로 읽은 바이트 수(size만큼)를 반환
+	- 파일 끝에 도달할 경우 반환값은 size보다 작을 수 있다
+	- 읽은 바이트 수만큼 FILE의 위치를 이동
+*/
 off_t
 file_read (struct file *file, void *buffer, off_t size) {
 	off_t bytes_read = inode_read_at (file->inode, buffer, size, file->pos);
@@ -81,6 +87,12 @@ file_read (struct file *file, void *buffer, off_t size) {
  * Returns the number of bytes actually read,
  * which may be less than SIZE if end of file is reached.
  * The file's current position is unaffected. */
+/*
+	파일의 file_ofs 오프셋 위치부터 size만큼 읽어 buffer에 저장
+	- 실제로 읽은 바이트 수를 반환
+	- 파일 끝에 도달할 경우 반환값은 size보다 작을 수 있다
+	- FILE의 현재 위치는 변경되지 않는다
+*/
 off_t
 file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs) {
 	return inode_read_at (file->inode, buffer, size, file_ofs);
@@ -145,6 +157,9 @@ file_length (struct file *file) {
 
 /* Sets the current position in FILE to NEW_POS bytes from the
  * start of the file. */
+/*
+	FILE내의 현재 위치를 파일 시작 지점으로부터 new_pos바이트 떨어진 곳으로 설정
+*/
 void
 file_seek (struct file *file, off_t new_pos) {
 	ASSERT (file != NULL);

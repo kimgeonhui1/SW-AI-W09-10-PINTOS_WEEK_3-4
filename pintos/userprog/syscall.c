@@ -43,6 +43,9 @@ void close (int fd);
 
 struct lock filesys_lock;
 
+void *mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+void munmap (void *addr);
+
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -146,6 +149,12 @@ syscall_handler (struct intr_frame *f) {
             close((int)f->R.rdi);
             break;
 
+        case SYS_MMAP:
+            f->R.rax = (uint64_t)mmap((void *)f->R.rdi, (size_t)f->R.rsi, (int)f->R.rdx, (int)f->R.r10, (off_t)f->R.r8);
+            break;
+        case SYS_MUNMAP:
+            munmap((void *)f->R.rdi);
+            break;
         default:
             exit(-1);
             break;
@@ -432,7 +441,7 @@ unsigned tell (int fd) {
     struct thread *curr = thread_current();
     struct file *file = curr->fdt[fd];
 
-    if(file == NULL) return;
+    if(file == NULL) return 0;
 
     lock_acquire(&filesys_lock);
     off_t offset = file_tell(file);
@@ -456,4 +465,27 @@ void close (int fd) {
     lock_release(&filesys_lock);
 
     return;
+}
+
+void *mmap(void *addr, size_t length, int writable, int fd, off_t offset){
+    if(addr == NULL || !is_user_vaddr(addr) || !is_user_vaddr(addr + length) || (int)length <= 0) return NULL;
+
+    if(addr != pg_round_down(addr) || offset % PGSIZE != 0) return NULL;
+
+    if(fd < 2) return NULL;
+
+    struct thread *curr = thread_current();
+    struct file *file = curr->fdt[fd];
+
+    if (file == NULL || file_length(file) == 0)
+        return NULL;
+    
+    return do_mmap(addr, length, writable, file, offset);
+}
+
+void munmap(void *addr) {
+    if (addr == NULL || !is_user_vaddr(addr) || pg_ofs(addr) != 0)
+        return;
+
+    do_munmap(addr);
 }

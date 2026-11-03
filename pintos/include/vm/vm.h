@@ -130,5 +130,6 @@ bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
 void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
+bool file_lazy_load (struct page *page, void *aux);
 
 #endif  /* VM_VM_H */

@@ -7,6 +7,11 @@ struct page;
 enum vm_type;
 
 struct file_page {
+	struct file *file;		// 파일
+	off_t offset;			// 파일의 어디부터 읽을지 오프셋 값
+	size_t read_bytes;		// 읽을 공간
+	size_t zero_bytes;		// 0으로 채울 공간(읽고 남은 공간)
+	bool writable;			// 쓰기가능 여부
 };
 
 void vm_file_init (void);

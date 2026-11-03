@@ -18,11 +18,11 @@ enum vm_type {
 
 	/* Auxillary bit flag marker for store information. You can add more
 	 * markers, until the value is fit in the int. */
-	VM_MARKER_0 = (1 << 3),
-	VM_MARKER_1 = (1 << 4),
+	VM_MARKER_0 = (1 << 3), /* 8(10) */
+	VM_MARKER_1 = (1 << 4), /* 16(10) */
 
 	/* DO NOT EXCEED THIS VALUE. */
-	VM_MARKER_END = (1 << 31),
+	VM_MARKER_END = (1 << 31), /* 2의31승(10)*/
 };
 
 #include "vm/uninit.h"
@@ -35,7 +35,7 @@ enum vm_type {
 struct page_operations;
 struct thread;
 
-#define VM_TYPE(type) ((type) & 7)
+#define VM_TYPE(type) ((type) & 7) /* 하위 3비트만 남기기 위해 7과 비트 연산 */
 
 /* The representation of "page".
  * This is kind of "parent class", which has four "child class"es, which are
@@ -67,11 +67,11 @@ struct frame {
 	void *kva;
 	struct page *page;
 };
-
+ 
 /* The function table for page operations.
  * This is one way of implementing "interface" in C.
  * Put the table of "method" into the struct's member, and
- * call it whenever you needed. */
+ * call it whenever you needed.*/
 struct page_operations {
 	bool (*swap_in) (struct page *, void *);
 	bool (*swap_out) (struct page *);

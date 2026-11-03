@@ -1016,7 +1016,7 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
-	if(vm_alloc_page(VM_ANON, stack_bottom, true) || vm_alloc_page(VM_MARKER_0, stack_bottom, true)){
+	if(vm_alloc_page(VM_ANON|VM_MARKER_0, stack_bottom, true)){
 		if_->rsp = USER_STACK; /* 페이지 할당 후 rsp = USER_STACTK 설정 */
 		success = vm_claim_page(stack_bottom); ;
 	}

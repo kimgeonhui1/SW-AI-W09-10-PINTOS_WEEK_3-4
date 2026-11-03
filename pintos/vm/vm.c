@@ -78,7 +78,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		struct page* page;
 		page = malloc(sizeof(struct page));
 
-		switch(type){
+		switch(VM_TYPE(type)){
 			case VM_ANON:
 				uninit_new(page, upage, init, type, aux, anon_initializer);
 				break;
@@ -193,10 +193,15 @@ vm_get_frame (void) {
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
 		/* TODO: vm_alloc_page(VM_ANON|VM_MARKER_0) 호출 = 익명 페이지, 스택용 페이지 둘 중 하나의 페이지를 할당 받는다 */
-		/* TODO: 할당할 때 addr을 PGSIZE의 배수인 페이지 시작 주소로 내림 */
-		/* TODO: 위의 step에서 생성된 페이지를 물리 프레임과 연결 */
+		/* 
+			할당할 때 addr을 PGSIZE의 배수인 페이지 시작 주소로 내림 
+			→ 폴트 주소를 페이지의 끝 주소로 이동시켜 등록 (pg_round_down함수 사용)
+		*/
+		if(!vm_alloc_page(VM_ANON|VM_MARKER_0, pg_round_down(addr), 1)){
+			return;
+		}
 }
 
 /* Handle the fault on write_protected page */
@@ -230,15 +235,29 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 
 		if(page == NULL){
 			/* 
-				TODO: stack접근과 다른 접근을 구분할 수 있는 휴리스틱 기준을 고안해야함 
-				→ stack확장이 필요한 유효한 상황인지 판별
+				stack확장이 필요한 유효한 상황인지 판별
+					- 사용자 모드에서 접근한 rsp인지? 커널 모드에서 접근한 rsp인지?
+						→ user == 1(사용자 모드) user == 0(커널 모드)
+							1인 경우 f->rsp 사용자 스택의 끝 주소 
+							0인 경우 f->rsp가 사용자 스택의 주소라는 보장이 없음. 스레드의 별도로 저장하는 로직 필요
+					- case1) 접근 주소와 사용자 스택 포인터의 관계를 보고 스택 접근인지 판단한다. PUSH로 인해 사용자 rsp보다 8바이트 아래에서 폴트가 발생하는 경우도 고려한다.
+					- case2) 사용자 모드에서 커널 모드로 넘어가기 직전에 사용자 스택(사용자 rsp값)을 저장하는 로직을 넣어야 한다.(Gitbook에서 struct thread에 저장하라고 명시)
 				→ 유효한 상황인 경우 vm_stack_growth() 호출
 			*/
-			/* TODO: stack_growth(fault 주소) 호출*/
-			vm_stack_growth(fault_addr);
-
-			return false;
+			if(user == 1){
+				if((uint64_t)f->rsp - 8 <= (uint64_t)fault_addr && (uint64_t)fault_addr < USER_STACK && (USER_STACK - (uint64_t)fault_addr) <= (1<<20)){
+					vm_stack_growth(fault_addr);
+					page = spt_find_page(spt, fault_addr);
+				}	
+			}else{
+				if(thread_current()->tmp_user_stack - 8 <= (uint64_t)fault_addr && (uint64_t)fault_addr < USER_STACK && (USER_STACK - (uint64_t)fault_addr) <= (1<<20)){
+					vm_stack_growth(fault_addr);
+					page = spt_find_page(spt, fault_addr);
+				}
+			}
+			if(page == NULL) return false;
 		}
+		/* 쓰기 권한이 허용된 페이지인지? */
 		if(write && page->writable == 0){
 			return false;
 		}

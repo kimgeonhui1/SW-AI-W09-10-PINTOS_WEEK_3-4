@@ -73,6 +73,9 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
+    /* 커널 모드로 진입하기 전에 사용자 스택(f->rsp)값을 thread내부에 저장해놓는다. */
+    //thread_current()->tf.rsp = f->rsp; /* ✘ 이렇게 작성하면 스레드가 교체되고 등의 작업으로 커널 스택 rsp로 덮어써질 수 있음*/
+    thread_current()->tmp_user_stack = (uint64_t)f->rsp; 
 	// TODO: Your implementation goes here.
 	switch(f->R.rax){
         // 인자 0개

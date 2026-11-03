@@ -313,6 +313,8 @@ vm_claim_page (void *va) {
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
+	if(frame = NULL) return false;
+
 	struct thread *curr = thread_current ();
 
 	/* Set links */

@@ -2,11 +2,14 @@
 
 #include "vm/vm.h"
 #include "include/threads/vaddr.h"
+#include "threads/synch.h" // 락 구조체를 알기 위해 필요
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
 static void file_backed_destroy (struct page *page);
 bool file_lazy_load (struct page *page, void *aux);
+
+extern struct lock filesys_lock; // syscall.c에 있는 락을 가져옴 
 
 /* DO NOT MODIFY this struct */
 static const struct page_operations file_ops = {
@@ -96,20 +99,27 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
         file_close(f);
         return NULL;
     }
-	// 읽을 byte 수
-    size_t read_bytes = (file_len - offset) < length ? (file_len - offset) : length;
-	// 0으로 채울 byte 수 (PGSIZE - 읽을 byte 수)
-    size_t zero_bytes = (PGSIZE - (read_bytes % PGSIZE)) % PGSIZE;
 
-    while (read_bytes > 0) {
+    // 매핑할 전체 길이를 PGSIZE(4096) 배수로 맞춤
+    size_t page_aligned_length = length % PGSIZE == 0 ? length : (length / PGSIZE + 1) * PGSIZE;
+
+	// 읽을 byte 수
+    size_t read_bytes = file_len > offset ? file_len - offset : 0;
+    if (read_bytes > length) read_bytes = length;
+
+	// 0으로 채울 byte 수 (PGSIZE - 읽을 byte 수)
+    size_t zero_bytes = page_aligned_length - read_bytes;
+
+    while (read_bytes > 0 || zero_bytes > 0) {
         size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
         struct vm_entry *aux = malloc(sizeof(struct vm_entry));
         if (aux == NULL) {
-			free(aux);
-			return NULL;
-		}
+            free(aux);
+            return NULL;
+        }
+
         aux->file = f;
         aux->offset = offset;
         aux->read_bytes = page_read_bytes;
@@ -155,6 +165,9 @@ do_munmap (void *addr) {
 
 
 bool file_lazy_load (struct page *page, void *aux) {
+    ASSERT(page->frame != NULL);
+
+    // printf("file_lazy_load called! page: %p, aux: %p\n", page, aux);
     struct file_page *file_page = &page->file;
     struct vm_entry *file_aux = (struct vm_entry *)aux;
 
@@ -164,11 +177,22 @@ bool file_lazy_load (struct page *page, void *aux) {
     file_page->read_bytes = file_aux->read_bytes;
     file_page->zero_bytes = file_aux->zero_bytes;
 
+    // lock_acquire(&filesys_lock);
     // 실제 물리 메모리(kva)에 파일 내용 읽기
-    if (file_read_at (file_page->file, page->frame->kva, file_page->read_bytes, file_page->offset) != (int)file_page->read_bytes) {
+    int real_read_byte = file_read_at (file_page->file, page->frame->kva, file_page->read_bytes, file_page->offset);
+
+    // lock_release(&filesys_lock);
+
+    if(real_read_byte != (int)file_page->read_bytes){
+        // printf("file_lazy_load read failed! actual: %d, expected: %d\n", real_read_byte, file_page->read_bytes);
         free(file_aux);
         return false;
     }
+
+    // if (file_read_at (file_page->file, page->frame->kva, file_page->read_bytes, file_page->offset) != (int)file_page->read_bytes) {
+    //     free(file_aux);
+    //     return false;
+    // }
 
     // 남은 공간은 0으로 채우기
     memset (page->frame->kva + file_page->read_bytes, 0, file_page->zero_bytes);

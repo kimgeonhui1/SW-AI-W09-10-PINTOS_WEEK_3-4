@@ -361,8 +361,10 @@ process_exec (void *f_name) {
 	/* If load failed, quit. */
 	// 커널 복사본 메모리 해제
 	palloc_free_page (file_name);
-	if (!success)
-		return -1;
+	if (!success){
+		printf("DEBUG: load() failed for %s!\n", file_name);
+		exit(-1);
+	}
 
 	/* Start switched process. */
 	/* do_iret 은 사용자 프로그램으로 실행을 전환하는 함수 */

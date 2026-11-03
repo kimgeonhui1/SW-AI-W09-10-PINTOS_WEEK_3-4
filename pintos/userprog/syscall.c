@@ -77,6 +77,7 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f) {
     thread_current()->saved_user_stack = f->rsp;
+    printf("DEBUG: SYSCALL %d started\n", f->R.rax);
 	// TODO: Your implementation goes here.
 	switch(f->R.rax){
         // 인자 0개
@@ -170,7 +171,19 @@ check_addr(void * addr){
 	// 커널 공간을 가리키고 있는지
 	// 페이지 테이블(pml4)에 매핑되어 있는지
     // if (addr == NULL || !is_user_vaddr (addr) || pml4_get_page (curr->pml4, addr) == NULL)  exit (-1);    
-    if (addr == NULL || !is_user_vaddr (addr))  exit (-1);    
+    // if (addr == NULL || !is_user_vaddr (addr))  {
+    //     // printf("DEBUG: check_address failed! addr: %p\n", addr);
+    //     exit (-1);    
+    // }
+
+    if (addr == NULL) {
+        printf("DEBUG: check_addr failed! addr is NULL\n");
+        exit(-1);
+    }
+    if (!is_user_vaddr(addr)) {
+        printf("DEBUG: check_addr failed! not user vaddr: %p\n", addr);
+        exit(-1);
+    }
 
     #ifdef VM
         // pml4_get_page 대신 spt_find_page 
@@ -217,7 +230,11 @@ check_addr_page(void * buffer, size_t size, bool write){
         check_addr(page);
         
         struct page *writable_page = spt_find_page(&curr->spt, page);
-        if (writable_page != NULL && writable_page->writable == false && write == false) exit(-1);
+
+        // 읽기 전용 페이지에 쓰기(write == true)를 하려면 오류 발생
+        if (writable_page != NULL && writable_page->writable == false && write == true) {
+            exit(-1);
+        }
     }
 
     // check_addr(str_end);
@@ -257,7 +274,9 @@ void exit(int status){
 }
 
 int write(int fd, const void *buffer, unsigned size){
+    printf("DEBUG: SYS_WRITE called! fd=%d, size=%u, buffer=%p\n", fd, size, buffer);
 	check_addr_page((void *)buffer, size, true);
+    printf("DEBUG: check_addr_page passed!\n");
 
     struct thread *curr = thread_current();
 

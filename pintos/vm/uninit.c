@@ -63,8 +63,7 @@ uninit_initialize (struct page *page, void *kva) {
  * PAGE will be freed by the caller. */
 static void
 uninit_destroy (struct page *page) {
-	struct uninit_page *uninit UNUSED = &page->uninit;
-	/* TODO: Fill this function.
-	 * TODO: If you don't have anything to do, just return. */
-	if(uninit->aux != NULL) free(uninit->aux);
+	struct uninit_page *uninit = &page->uninit;
+
+	if (uninit->aux != NULL) free (uninit->aux);
 }

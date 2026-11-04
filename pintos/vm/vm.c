@@ -5,9 +5,13 @@
 #include "vm/inspect.h"
 #include "threads/vaddr.h"
 #include "threads/mmu.h"
+#include "filesys/file.h"
 
 static uint64_t page_hash (const struct hash_elem *p_, void *aux UNUSED);
 static bool page_less (const struct hash_elem *a_,const struct hash_elem *b_, void *aux UNUSED);
+bool lazy_load_file (struct page *page, void *aux);
+bool file_backed_copy_mapping (struct supplemental_page_table *dst, struct supplemental_page_table *src, struct page *head);
+
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -66,7 +70,7 @@ bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
 
-	ASSERT (VM_TYPE(type) != VM_UNINIT)
+	ASSERT (VM_TYPE(type) != VM_UNINIT);
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
@@ -139,6 +143,7 @@ spt_insert_page (struct supplemental_page_table *spt,
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	hash_delete (&spt->spt_hash, &page->hash_elem);
 	vm_dealloc_page (page);
 	return true;
 }
@@ -316,53 +321,61 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 /* Copy supplemental page table from src to dst */
 // 보조 테이블 페이지(spt)를 src에서 dst로 복사
+/* Copy supplemental page table from src to dst */
+// 보조 테이블 페이지(spt)를 src에서 dst로 복사
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src) {
-	/* 해시 테이블을 순회하기 위함 */
+    /* 해시 테이블을 순회하기 위함 */
     struct hash_iterator i;
-    
+
     // 맨 처음부터 복사해야 하기에 맨 처음 위치로 보내기
     hash_first (&i, &src->spt_hash);
 
-    /* 해시 테이블의 다음 요소가 존재할 때까지(끝 까지) 루프를 돌며 모든 페이지를 복사 */
+    // 모든 페이지를 복사 
     while (hash_next (&i)) {
         // 데이터 가져오기
         struct page *parent_page = hash_entry (hash_cur (&i), struct page, hash_elem);
-        
+
         void *upage = parent_page->va;
         bool writable = parent_page->writable;
 
+        // FILE 페이지: 첫 페이지에서 영역 전체를 복사하고, 나머지 페이지는 건너뜀 
+        if (VM_TYPE (page_get_type (parent_page)) == VM_FILE) {
+            if (!file_backed_copy_mapping (dst, src, parent_page)) return false;
+            continue;
+        }
+
+        // ANON 페이지 
         // 물리 메모리에 적재되지 않은 경우 (VM_UNINIT)
         if (parent_page->operations->type == VM_UNINIT) {
             void *child_aux = NULL;
 
-			if(parent_page->uninit.aux != NULL) {
-                child_aux = malloc (sizeof(struct vm_entry)); 
-                if (child_aux == NULL) return false; 
+            if (parent_page->uninit.aux != NULL) {
+                child_aux = malloc (sizeof (struct vm_entry));
+                if (child_aux == NULL) return false;
 
-                memcpy (child_aux, parent_page->uninit.aux, sizeof(struct vm_entry));
+                memcpy (child_aux, parent_page->uninit.aux, sizeof (struct vm_entry));
             }
 
-			// 가상 페이지 생성 및 spt에 등록
+            // 가상 페이지 생성 및 spt에 등록
             if (!vm_alloc_page_with_initializer (parent_page->uninit.type, upage, writable, parent_page->uninit.init, child_aux)) {
-                if (child_aux != NULL) free(child_aux);
+                if (child_aux != NULL) free (child_aux);
                 return false;
             }
-        } 
+        }
 
-    	// 이미 물리 메모리(프레임)에 데이터가 올라와 있는 경우 (VM_ANON, VM_FILE)
+        // 이미 물리 메모리(프레임)에 데이터가 올라와 있는 경우 (VM_ANON)
         else {
-			// 가상 페이지 생성(vm_alloc_page_with_initalizer 실행)(첫번째 페이지의 타입으로)
             if (!vm_alloc_page (parent_page->operations->type, upage, writable)) return false;
-			// 인자로 주는 주소에 대응하는 spt 페이지 찾고 물리 프레임을 할당받고 가상 주소와 물리 주소를 매핑
             if (!vm_claim_page (upage)) return false;
 
             struct page *child_page = spt_find_page (dst, upage);
-            
+            if (child_page == NULL) return false;
+
             memcpy (child_page->frame->kva, parent_page->frame->kva, PGSIZE);
         }
     }
-    return true;	
+    return true;
 }
 
 static void destroy_page(struct hash_elem *e, void *aux UNUSED){
@@ -386,4 +399,56 @@ supplemental_page_table_kill (struct supplemental_page_table *spt) {
         hash_clear(&spt->spt_hash, destroy_page);
     }
 
+}
+/* src의 mmap 영역을 현재 스레드(자식)의 SPT로 복사.
+ * head가 영역의 첫 페이지(page_cnt > 0)가 아니면 아무것도 하지 않고 true 반환 */
+bool
+file_backed_copy_mapping (struct supplemental_page_table *dst,
+                          struct supplemental_page_table *src, struct page *head) {
+    int page_cnt;
+    struct file *src_file;
+
+    /* do_munmap과 같은 방식으로 첫 페이지의 정보를 읽음 */
+    if (head->operations->type == VM_UNINIT) {
+        struct file_page *head_aux = (struct file_page *) head->uninit.aux;
+        page_cnt = head_aux->page_cnt;
+        src_file = head_aux->file;
+    } else {
+        page_cnt = head->file.page_cnt;
+        src_file = head->file.file;
+    }
+
+    /* 영역의 첫 페이지가 아니면 건너뜀 (첫 페이지에서 영역 전체를 복사하기 때문) */
+    if (page_cnt < 1) return true;
+
+    /* 영역당 한 번만 reopen: 영역의 모든 페이지가 이 핸들을 공유 */
+    struct file *new_file = file_reopen (src_file);
+    if (new_file == NULL) return false;
+
+    for (int i = 0; i < page_cnt; i++) {
+        void *va = head->va + i * PGSIZE;
+        struct page *src_page = spt_find_page (src, va);
+        if (src_page == NULL) return false;
+
+        bool loaded = (src_page->operations->type != VM_UNINIT);
+
+        struct file_page *aux = malloc (sizeof *aux);
+        if (aux == NULL) return false;
+        if (loaded) *aux = src_page->file;
+        else        *aux = *(struct file_page *) src_page->uninit.aux;
+        aux->file = new_file;
+
+        if (!vm_alloc_page_with_initializer (VM_FILE, va, src_page->writable, lazy_load_file, aux)) {
+            free (aux);
+            return false;
+        }
+
+        /* 이미 올라와 있던 페이지는 즉시 claim 후 내용 복사 (부모가 수정했을 수 있음) */
+        if (loaded) {
+            if (!vm_claim_page (va)) return false;
+            struct page *dst_page = spt_find_page (dst, va);
+            memcpy (dst_page->frame->kva, src_page->frame->kva, PGSIZE);
+        }
+    }
+    return true;
 }

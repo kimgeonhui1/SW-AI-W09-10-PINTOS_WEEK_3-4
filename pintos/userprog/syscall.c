@@ -16,12 +16,17 @@
 #include "devices/input.h"
 #include "threads/palloc.h"
 
+#ifdef VM
+#include "vm/vm.h"
+#include "vm/file.h"
+#endif
+
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
 void check_addr(void * addr);
-void check_addr_page(void * buffer, size_t size);
+void check_addr_page(void * buffer, size_t size, bool);
 void check_addr_byte(char *string);
 
 void halt(void);
@@ -40,6 +45,10 @@ int read (int fd, void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);
 void close (int fd);
+
+void *mmap(void *addr, size_t length, int writable, int fd, off_t offset);
+void munmap(void *addr);
+
 
 struct lock filesys_lock;
 
@@ -73,6 +82,7 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
+    thread_current()->saved_user_stack = f->rsp;
 	// TODO: Your implementation goes here.
 	switch(f->R.rax){
         // 인자 0개
@@ -145,6 +155,16 @@ syscall_handler (struct intr_frame *f) {
             close((int)f->R.rdi);
             break;
 
+        // 인자 5개 (void *addr, size_t length, int writable, int fd, off_t offset)
+        case SYS_MMAP:
+            f->R.rax = (uint64_t)mmap((void *)f->R.rdi, (size_t)f->R.rsi, (int)f->R.rdx, (int)f->R.r10, (off_t)f->R.r8);
+            break;
+        
+        // 인자 1개 (void *addr)
+        case SYS_MUNMAP:
+            munmap((void *)f->R.rdi);
+            break;
+
         default:
             exit(-1);
             break;
@@ -154,30 +174,64 @@ syscall_handler (struct intr_frame *f) {
 
 void
 check_addr(void * addr){
-	struct thread *curr = thread_current();
+    // struct thread *curr = thread_current();
 
 	// NULL 포인터인지
 	// 커널 공간을 가리키고 있는지
 	// 페이지 테이블(pml4)에 매핑되어 있는지
-	if (addr == NULL || !is_user_vaddr (addr) || pml4_get_page (curr->pml4, addr) == NULL)  exit (-1);
-	return;
+    // if (addr == NULL || !is_user_vaddr (addr) || pml4_get_page (curr->pml4, addr) == NULL)  exit (-1);    
+    if (addr == NULL || !is_user_vaddr (addr))  exit (-1);    
+
+    #ifdef VM
+        // pml4_get_page 대신 spt_find_page 
+        // struct page *page = spt_find_page(&curr->spt, addr);
+        // if (page != NULL && page->writable == false) {
+        //     exit(-1);
+        // }
+
+    #else
+        if (pml4_get_page(curr->pml4, addr) == NULL) {
+            exit(-1);
+        }
+        return;
+    #endif
+
+    return;
 }
 
 // 페이지 단위 검사하는(check_addr()함수 사용)함수 구현해야함
 // -> read, write에서 사용
+// read는 디스크(파일)에서 데이터를 가져와서 User Memory(buffer)에 Write 해야함 -> Writable == true여야함
+// write는 User Memory(buffer)에 있는 내용을 읽어서 파일이나 화면에 출력
 void
-check_addr_page(void * buffer, size_t size){
+check_addr_page(void * buffer, size_t size, bool write){
 	// 예외사항
 	if(buffer == NULL) exit(-1);
-	if(size ==0) return;
+    if(size ==0) return;
+    if (!is_user_vaddr(buffer) || !is_user_vaddr(buffer + size - 1)) exit(-1);
+    
 
+    struct thread *curr = thread_current();
+    // struct page *writable_page = spt_find_page(&curr->spt, buffer);
+    // if (writable_page != NULL && writable_page->writable == false && write == true) exit(-1);
+    
 	const char *str_start = (const char *)buffer;
     const char *str_end = str_start + size - 1;	
+
+    char *start_page = pg_round_down(str_start);
+    char *end_page = pg_round_down(str_end);
 
 	// 시작주소 ~ 끝주소까지 페이지 단위로 검사
 	// pg_round_down(페이지에 들어가있는 주소?) -> 페이지의 시작점을 알려줌
 	// pg_round_up () -> 페이지의 끝을 알려줌
-	for(char *page = pg_round_down(str_start); page <= str_end; page += PGSIZE) check_addr(page);
+	for(char *page = start_page; page <= end_page; page += PGSIZE) {
+        check_addr(page);
+        
+        struct page *writable_page = spt_find_page(&curr->spt, page);
+        if (writable_page != NULL && writable_page->writable == false && write == false) exit(-1);
+    }
+
+    check_addr(str_end);
 
 	return;
 }
@@ -208,12 +262,13 @@ void halt(void){
 void exit(int status){
 	thread_current() ->status_exit = status;
 
+    if (lock_held_by_current_thread(&filesys_lock)) lock_release(&filesys_lock);
 	// 현재 실행중인 스레드를 강제 종료시킴
 	thread_exit();
 }
 
 int write(int fd, const void *buffer, unsigned size){
-	check_addr_page((void *)buffer, size);
+	check_addr_page((void *)buffer, size, true);
 
     struct thread *curr = thread_current();
 
@@ -339,16 +394,18 @@ int filesize (int fd) {
 }
 
 int read (int fd, void *buffer, unsigned size) { 
-	check_addr_page((void*)buffer, size);
+	check_addr_page((void*)buffer, size, false);
 	
     struct thread *curr = thread_current();
+
+    
 
     if (size == 0) return 0;
 
     if(fd==0){
         // buffer는 void* 이므로 byte 단위로 접근을 위해 형변환
         char *char_buffer = (char *)buffer;
-        for(int i = 0; i < size; i++){
+        for (unsigned i = 0; i < size; i++){
             // loop를 돌며 size만큼 키보드에서 입력을 받아오며(input_getc) buffer배열에 넣기
             char_buffer[i] = input_getc();
         }
@@ -395,7 +452,7 @@ unsigned tell (int fd) {
     struct thread *curr = thread_current();
     struct file *file = curr->fdt[fd];
 
-    if(file == NULL) return;
+    if(file == NULL) return -1;
 
     lock_acquire(&filesys_lock);
     off_t offset = file_tell(file);
@@ -419,4 +476,46 @@ void close (int fd) {
     lock_release(&filesys_lock);
 
     return;
+}
+
+// 인자 5개
+void *mmap(void *addr, size_t length, int writable, int fd, off_t offset){
+    // 인자 유효성 검사
+    // 유효하지 않은 주소인지, 페이지 정렬되어있지 않은지, 읽을 길이가 0 이하인지, fd == 0 또는 1인지
+    if (addr == NULL || pg_ofs(addr) != 0 || offset % PGSIZE != 0 || length == 0 || fd < 2 || fd >= FD_MAX) return NULL;
+
+    // user영역에 있는지(커널 영역에 침범했는지) 및 주소 오버플로우 검사
+    if (!is_user_vaddr(addr) || !is_user_vaddr(addr + length - 1) || (uint64_t)addr + length < (uint64_t)addr) return NULL;
+
+    // fd를 통해 struct file * 찾기
+    struct file * file = thread_current()->fdt[fd];
+    if (file == NULL) return NULL;
+
+    // 파일 길이 구하기
+    lock_acquire(&filesys_lock);
+    off_t f_len = file_length(file);
+    lock_release(&filesys_lock);
+
+    // 찾은 파일의 크기가 0 이하인지, 잘못 읽어왔는지    
+    if (f_len <= 0 || offset < 0 || offset >= f_len) return NULL;
+    
+    struct supplemental_page_table *spt = &thread_current()->spt;
+    // addr부터 addr + length까지 모든 페이지(PGSIZE 단위)에 대해 spt_find_page 호출하여 이미 할당된 페이지가 있는지 확인
+    for (void *check_page = addr; check_page < addr + length; check_page += PGSIZE) {
+        if (spt_find_page(spt, check_page) != NULL) {
+            return NULL;
+        }
+    }
+
+    // do_mmap() 호출 및 결과 반환
+    return do_mmap(addr, length, writable, file, offset);
+}
+
+
+// 인자 1개
+void munmap(void *addr){
+    // 예외 처리 후 do_munmap(addr) 호출
+    if (addr == NULL || !is_user_vaddr(addr) || pg_ofs(addr) != 0) return;
+    do_munmap(addr);
+
 }

@@ -7,6 +7,11 @@ struct page;
 enum vm_type;
 
 struct file_page {
+	struct file *file;
+    off_t offset;
+    size_t read_bytes;
+    size_t zero_bytes;
+	int page_cnt;			// 매핑된 페이지 개수
 };
 
 void vm_file_init (void);

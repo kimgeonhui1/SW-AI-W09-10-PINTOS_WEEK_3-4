@@ -179,6 +179,8 @@ inode_remove (struct inode *inode) {
 /* Reads SIZE bytes from INODE into BUFFER, starting at position OFFSET.
  * Returns the number of bytes actually read, which may be less
  * than SIZE if an error occurs or end of file is reached. */
+// inode에서 offset 위치부터 size 만큼 buffer로 읽음
+// 실제로 읽은 byte 수 반환. 오류가 발생하거나 파일 끝에 도달하면 size보다 작을 수 있음
 off_t
 inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset) {
 	uint8_t *buffer = buffer_;

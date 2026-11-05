@@ -77,12 +77,15 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Insert the page into the spt. */
 		struct page* page;
 		page = malloc(sizeof(struct page));
-
+		if(page == NULL){
+			return false;
+		}
+		
 		switch(VM_TYPE(type)){
 			case VM_ANON:
 				uninit_new(page, upage, init, type, aux, anon_initializer);
 				break;
-			case VM_UNINIT:
+			case VM_FILE:
 				uninit_new(page, upage, init, type, aux, file_backed_initializer);
 				break;
 			default:
@@ -144,8 +147,14 @@ spt_insert_page (struct supplemental_page_table *spt,
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	/* 
+	* 페이지에 내장된 hash_elem을 SPT 해시 테이블에서 제거한다.
+ 	* 제거에 성공하면 vm_dealloc_page()로 페이지 객체를 해제한다.
+	*/
+	if(!hash_delete(&spt->spt_hash, &page->hash_elem)){
+		return;
+	}
 	vm_dealloc_page (page);
-	return true;
 }
 
 /* Get the struct frame, that will be evicted. */
@@ -314,6 +323,8 @@ vm_do_claim_page (struct page *page) {
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt) {
+	/* mapped_info_list 초기화 */
+	list_init(&spt->mapped_info_list);
 	/* hash_init()함수를 호출하여 hash 초기화 */
 	if(!hash_init(&spt->spt_hash, page_hash, page_less, NULL)) return;
 }

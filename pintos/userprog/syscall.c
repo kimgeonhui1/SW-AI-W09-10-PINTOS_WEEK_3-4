@@ -41,6 +41,10 @@ void seek (int fd, unsigned position);
 unsigned tell (int fd);
 void close (int fd);
 
+/* Memory Mapped Files(Project3) */
+void* mmap(void *addr, size_t length, int writable, int fd, off_t offset);
+void munmap(void *addr);
+
 struct lock filesys_lock;
 
 /* System call.
@@ -146,6 +150,14 @@ syscall_handler (struct intr_frame *f) {
         // 인자 1개 (int fd)
         case SYS_CLOSE:
             close((int)f->R.rdi);
+            break;
+
+        case SYS_MMAP:
+            f->R.rax = (uint64_t)mmap((void* )f->R.rdi, (size_t)f->R.rsi, (int)f->R.rdx, (int)f->R.r10, (off_t)f->R.r8);
+            break;
+        
+        case SYS_MUNMAP:
+            munmap((void* )f->R.rdi);
             break;
 
         default:
@@ -425,4 +437,33 @@ void close (int fd) {
     lock_release(&filesys_lock);
 
     return;
+}
+
+/*
+    파일의 일부를 사용자 가상 주소에 연결해서 포인터로 읽고 쓸 수 있게 하는 System Call 
+	- fd로 열린 파일의 offsetqnxj length만큼 프로세스의 addr부터 시작하는 연속된 가상 페이지에 연결
+	- ✅ 성공: 매핑의 시작 주소 반환
+	- ❌ 실패: NULL 반환
+*/
+void* mmap(void *addr, size_t length, int writable, int fd, off_t offset){
+    /* 현재 실행 중인 스레드의 fdt리스트 가져오기 */
+    struct file** fdt = thread_current()->fdt;
+    /* ✔︎ addr == NULL, length가 0이면 NULL, 콘솔, 출력에 해당한 fd일 경우 NULL*/
+    if(addr == NULL || length == 0 || fd < 2 || fd >= FD_MAX || fdt[fd] == NULL){
+        return NULL;
+    }
+    /* 매핑할 fd번호의 file객체 포인터 가져오기 */
+    struct file* file = fdt[fd];
+    if(file == NULL){
+        return NULL;
+    }
+    
+    return do_mmap(addr, length, writable, file, offset);
+}
+
+/*
+    mmap에서 매핑한 addr에서 시작하는 파일 매핑 전체를 해제하는 System Call
+*/
+void munmap(void *addr){
+    do_munmap(addr);
 }

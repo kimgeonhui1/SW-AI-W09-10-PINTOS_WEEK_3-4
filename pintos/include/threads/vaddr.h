@@ -21,7 +21,7 @@
 #define PGMASK  BITMASK(PGSHIFT, PGBITS)   /* Page offset bits (0:12). */
 
 /* Offset within a page. */
-#define pg_ofs(va) ((uint64_t) (va) & PGMASK)
+#define pg_ofs(va) ((uint64_t) (va) & PGMASK) /* 가상 주소 va를 페이지 번호와 페이지 안에서의 위치로 나눠 보는 매크로 */
 
 #define pg_no(va) ((uint64_t) (va) >> PGBITS)
 

@@ -84,6 +84,13 @@ struct page_operations {
 #define destroy(page) \
 	if ((page)->operations->destroy) (page)->operations->destroy (page)
 
+struct mapped_info{
+	void* start_addr;
+	void* end_addr;
+	struct file* file;
+	struct list_elem list_elem;
+};
+
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
@@ -98,7 +105,8 @@ struct supplemental_page_table {
 		4) 로드 상태: 실제 메모리에 로딩되어 있는지 여부(frame 연결 여부) -> page 구조체에 추가? or 내장 함수가 있나? 혹은 일단 생각하지 말까?
 		5) 백업 위치: 디스크 파일 Offset, swap slot -> page 구조체에 추가? or 내장 함수가 있나? 혹은 일단 생각하지 말까?
 	*/
-	struct hash spt_hash; 
+	struct hash spt_hash;
+	struct list mapped_info_list;
 };
 
 /* page에 들어갈 보조 정보 */

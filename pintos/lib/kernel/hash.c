@@ -47,6 +47,14 @@ hash_init (struct hash *h,
    functions hash_clear(), hash_destroy(), hash_insert(),
    hash_replace(), or hash_delete(), yields undefined behavior,
    whether done in DESTRUCTOR or elsewhere. */
+/* 
+	해쉬 테이블 H에서 모든 원소 제거
+
+	DESTRUCTOR가 NULL이 아니면 해쉬 테이블의 각 원소에 대해 해당 함수를 호출.
+	DESTRUCTOR은 필요에 따라 해당 원소가 사용하는 메모리 해제 가능
+	다만, hash_clear()가 실행되는 동안 hash_clear(), hash_destroy(), hash_insert(), hash_replace(), hash_delete() 중 하나를 사용해 해시 테이블 H를 변경하면 정의되지 않은 동작이 발생.
+	이러한 변경이 DESTRUCTOR 내부에서 일어나든 다른 곳에서 일어나든 동일.
+*/
 void
 hash_clear (struct hash *h, hash_action_func *destructor) {
 	size_t i;

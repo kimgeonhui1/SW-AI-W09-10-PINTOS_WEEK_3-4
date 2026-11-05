@@ -41,6 +41,10 @@ void seek (int fd, unsigned position);
 unsigned tell (int fd);
 void close (int fd);
 
+/* Memory Mapped Files(Project3) */
+void* mmap(void *addr, size_t length, int writable, int fd, off_t offset);
+void munmap(void *addr);
+
 struct lock filesys_lock;
 
 /* System call.
@@ -73,6 +77,9 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
+    /* 커널 모드로 진입하기 전에 사용자 스택(f->rsp)값을 thread내부에 저장해놓는다. */
+    //thread_current()->tf.rsp = f->rsp; /* ✘ 이렇게 작성하면 스레드가 교체되고 등의 작업으로 커널 스택 rsp로 덮어써질 수 있음*/
+    thread_current()->tmp_user_stack = (uint64_t)f->rsp; 
 	// TODO: Your implementation goes here.
 	switch(f->R.rax){
         // 인자 0개
@@ -145,6 +152,14 @@ syscall_handler (struct intr_frame *f) {
             close((int)f->R.rdi);
             break;
 
+        case SYS_MMAP:
+            f->R.rax = (uint64_t)mmap((void* )f->R.rdi, (size_t)f->R.rsi, (int)f->R.rdx, (int)f->R.r10, (off_t)f->R.r8);
+            break;
+        
+        case SYS_MUNMAP:
+            munmap((void* )f->R.rdi);
+            break;
+
         default:
             exit(-1);
             break;
@@ -158,8 +173,11 @@ check_addr(void * addr){
 
 	// NULL 포인터인지
 	// 커널 공간을 가리키고 있는지
-	// 페이지 테이블(pml4)에 매핑되어 있는지
-	if (addr == NULL || !is_user_vaddr (addr) || pml4_get_page (curr->pml4, addr) == NULL)  exit (-1);
+	// Project2까지는 이 부분을 exit(-1) 처리했는데 Project3부터는 정상적인 접근으로 처리
+	if (addr == NULL 
+        || !is_user_vaddr (addr) 
+        // || pml4_get_page (curr->pml4, addr) == NULL
+    )  exit (-1);
 	return;
 }
 
@@ -419,4 +437,33 @@ void close (int fd) {
     lock_release(&filesys_lock);
 
     return;
+}
+
+/*
+    파일의 일부를 사용자 가상 주소에 연결해서 포인터로 읽고 쓸 수 있게 하는 System Call 
+	- fd로 열린 파일의 offsetqnxj length만큼 프로세스의 addr부터 시작하는 연속된 가상 페이지에 연결
+	- ✅ 성공: 매핑의 시작 주소 반환
+	- ❌ 실패: NULL 반환
+*/
+void* mmap(void *addr, size_t length, int writable, int fd, off_t offset){
+    /* 현재 실행 중인 스레드의 fdt리스트 가져오기 */
+    struct file** fdt = thread_current()->fdt;
+    /* ✔︎ addr == NULL, length가 0이면 NULL, 콘솔, 출력에 해당한 fd일 경우 NULL*/
+    if(addr == NULL || length == 0 || fd < 2 || fd >= FD_MAX || fdt[fd] == NULL){
+        return NULL;
+    }
+    /* 매핑할 fd번호의 file객체 포인터 가져오기 */
+    struct file* file = fdt[fd];
+    if(file == NULL){
+        return NULL;
+    }
+    
+    return do_mmap(addr, length, writable, file, offset);
+}
+
+/*
+    mmap에서 매핑한 addr에서 시작하는 파일 매핑 전체를 해제하는 System Call
+*/
+void munmap(void *addr){
+    do_munmap(addr);
 }

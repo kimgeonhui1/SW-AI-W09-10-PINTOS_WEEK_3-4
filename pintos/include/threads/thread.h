@@ -155,6 +155,7 @@ struct thread {
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
+	uint64_t tmp_user_stack; /* 커널 모드로 진입 전 사용자 모드에서의 사용자 스택 rsp를 저장할 임시 멤버 */
 #endif
 	int64_t timer_tick;                 /* 알람에서 깨어날 tick. */
 

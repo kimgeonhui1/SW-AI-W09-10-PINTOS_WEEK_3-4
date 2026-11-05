@@ -18,11 +18,11 @@ enum vm_type {
 
 	/* Auxillary bit flag marker for store information. You can add more
 	 * markers, until the value is fit in the int. */
-	VM_MARKER_0 = (1 << 3),
-	VM_MARKER_1 = (1 << 4),
+	VM_MARKER_0 = (1 << 3), /* 8(10) */
+	VM_MARKER_1 = (1 << 4), /* 16(10) */
 
 	/* DO NOT EXCEED THIS VALUE. */
-	VM_MARKER_END = (1 << 31),
+	VM_MARKER_END = (1 << 31), /* 2의31승(10)*/
 };
 
 #include "vm/uninit.h"
@@ -35,7 +35,7 @@ enum vm_type {
 struct page_operations;
 struct thread;
 
-#define VM_TYPE(type) ((type) & 7)
+#define VM_TYPE(type) ((type) & 7) /* 하위 3비트만 남기기 위해 7과 비트 연산 */
 
 /* The representation of "page".
  * This is kind of "parent class", which has four "child class"es, which are
@@ -67,11 +67,11 @@ struct frame {
 	void *kva;
 	struct page *page;
 };
-
+ 
 /* The function table for page operations.
  * This is one way of implementing "interface" in C.
  * Put the table of "method" into the struct's member, and
- * call it whenever you needed. */
+ * call it whenever you needed.*/
 struct page_operations {
 	bool (*swap_in) (struct page *, void *);
 	bool (*swap_out) (struct page *);
@@ -83,6 +83,13 @@ struct page_operations {
 #define swap_out(page) (page)->operations->swap_out (page)
 #define destroy(page) \
 	if ((page)->operations->destroy) (page)->operations->destroy (page)
+
+struct mapped_info{
+	void* start_addr;
+	void* end_addr;
+	struct file* file;
+	struct list_elem list_elem;
+};
 
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
@@ -98,8 +105,20 @@ struct supplemental_page_table {
 		4) 로드 상태: 실제 메모리에 로딩되어 있는지 여부(frame 연결 여부) -> page 구조체에 추가? or 내장 함수가 있나? 혹은 일단 생각하지 말까?
 		5) 백업 위치: 디스크 파일 Offset, swap slot -> page 구조체에 추가? or 내장 함수가 있나? 혹은 일단 생각하지 말까?
 	*/
-	struct hash spt_hash; 
+	struct hash spt_hash;
+	struct list mapped_info_list;
 };
+
+/* page에 들어갈 보조 정보 */
+struct vm_entry {
+	struct file *file;
+	off_t ofs;
+	uint32_t read_bytes;
+	uint32_t zero_bytes;
+	bool writable;
+	void *va;
+};
+
 
 #include "threads/thread.h"
 void supplemental_page_table_init (struct supplemental_page_table *spt);

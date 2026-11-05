@@ -150,14 +150,22 @@ page_fault (struct intr_frame *f) {
 	/* Count page faults. */
 	page_fault_cnt++;
 
-	/* If the fault is true fault, show info and exit. */
-	printf ("Page fault at %p: %s error %s page in %s context.\n",
+	// user 모드에서 잘못된 주소로 접근 했을 때 오류 발생하거나 접근 대상이 사용자 주소인 경우 복구 불가능하다
+	if(user || is_user_vaddr(fault_addr)) {
+		/* 프로세스 종료 직전에 파일 락 해제 */
+		if(lock_held_by_current_thread(&filesys_lock)){
+			lock_release(&filesys_lock);
+		}
+		exit(-1);
+	}else{
+		/* If the fault is true fault, show info and exit. */
+		/* 정상적인 폴트인 경우 해당 메시지 출력 */
+		printf ("Page fault at %p: %s error %s page in %s context.\n",
 			fault_addr,
 			not_present ? "not present" : "rights violation",
 			write ? "writing" : "reading",
 			user ? "user" : "kernel");
-	// user 모드에서 잘못된 주소로 접근 했을 때 오류 발생
-	if(user) exit(-1);
+	}
 	kill (f);
 }
 
